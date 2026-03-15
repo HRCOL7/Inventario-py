@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""
+Inventário - GUI + Exportação (versão personalizada)
+Unifica leitura do Excel (mapeamento), contagem por bip (scanner), listagem em tela,
+scroll automático, atalhos e exportação final.
+
+Atalhos:
+ - Ctrl+F1: Resumo
+ - F2: Total
+ - F3: Salvar parcial (backup)
+ - F4: Excluir item
+ - F5: Finalizar (gera TXT)
+
+Validação: apenas códigos de barras com 13 dígitos.
+"""
+
+import sys
+import re
+import os
+from collections import defaultdict, Counter
+from typing import Optional
+import pandas as pd
+import tkinter as tk
+from tkinter import messagebox, simpledialog, ttk
+
+# ---------- Configurações ----------
+ARQUIVO_EXCEL_PADRAO = "produtos.xlsx"
+ABA_EXCEL_PADRAO = None
+ARQUIVO_TXT_SAIDA = "contagem.txt"
+ARQUIVO_CSV_DETALHADO = "contagem_detalhada.csv"
+ARQUIVO_CSV_NAO_MAPEADOS = "nao_mapeados.csv"
+ARQUIVO_BACKUP = "contagem_backup.txt"
+
+MOSTRAR_TOP_N_RESUMO = 10
+
+SINONIMOS_COLUNAS = {
+    "CodigoBarra": [
+        "codigobarra", "codigo_barra", "cod_barra", "cod_barras", "codigo de barras",
+        "codbarras", "código de barras", "barcode", "ean", "codigo_barras", "codigo barras",
+        "codigo de barra"
+    ],
+    "CodigoInterno": [
+        "codigointerno", "codigo_interno", "codinterno", "codigo", "sku", "código interno",
+        "ref interna"
+    ],
+    "Nome": [
+        "nome", "descricao", "descrição", "produto", "nome_produto", "nome produto"
+    ],
+}
+
+
+# ---------- Utilitários para planilha ----------
+def normaliza_rotulo(s: str) -> str:
+    return re.sub(r"[\W_]+", " ", str(s).strip().lower())
+
+
+def encontrar_coluna(df: pd.DataFrame, alvo: str) -> Optional[str]:
+    candidatos = [alvo.lower()] + SINONIMOS_COLUNAS.get(alvo, [])
+    candidatos = [normaliza_rotulo(x) for x in candidatos]
+    normal_por_original = {normaliza_rotulo(col): col for col in df.columns}
+    for cand in candidatos:
+        if cand in normal_por_original:
+            return normal_por_original[cand]
+    return None
+
+
+def carregar_mapeamento(caminho_excel: str, aba: Optional[str] = None):
+    if not os.path.exists(caminho_excel):
+        messagebox.showerror("Erro", f"Não encontrei o arquivo Excel: {caminho_excel}")
+        sys.exit(1)
+
+    try:
+        df = pd.read_excel(caminho_excel, sheet_name=aba, engine="openpyxl")
+    except Exception as e:
+        messagebox.showerror("Erro", f"Erro ao ler o Excel: {e}")
+        sys.exit(1)
+
+    if isinstance(df, dict):
+        df = next(iter(df.values()))
+
+    col_cb = encontrar_coluna(df, "CodigoBarra")
+    col_ci = encontrar_coluna(df, "CodigoInterno")
+    col_nm = encontrar_coluna(df, "Nome")
+
+    if not all([col_cb, col_ci, col_nm]):
+        messagebox.showerror("Erro", "Não encontrei todas as colunas necessárias (CodigoBarra, CodigoInterno, Nome)")
+        sys.exit(1)
+
+    df[col_cb] = df[col_cb].astype(str).str.strip()
+    df[col_ci] = df[col_ci].astype(str).str.strip()
+    df[col_nm] = df[col_nm].astype(str).str.strip()
+
+    mapeamento = {}
+    for _, row in df.iterrows():
+        cb, ci, nm = row[col_cb], row[col_ci], row[col_nm]
+        if cb:
+            mapeamento[cb] = (ci, nm)
+    return mapeamento
+
+
+# ---------- Sons ----------
+def beep_ok():
+    try:
+        import winsound
+        winsound.Beep(880, 70)
+    except Exception:
+        print("\a", end="", flush=True)
+
+
+def beep_erro():
+    try:
+        import winsound
+        winsound.Beep(220, 120)
+    except Exception:
+        print("\a", end="", flush=True)
+
+
+# ---------- Exportação ----------
+def exportar_txt_formatado(contagem_por_cb: Counter, mapeamento: dict, arquivo: str):
+    agreg_interno = defaultdict(int)
+    for cb, qtd in contagem_por_cb.items():
+        if cb in mapeamento and qtd > 0:
+            ci, _ = mapeamento[cb]
+            agreg_interno[ci] += qtd
+    linhas = [f"{ci} | {agreg_interno[ci]}" for ci in sorted(agreg_interno.keys())]
+    with open(arquivo, "w", encoding="utf-8") as f:
+        f.write("\n".join(linhas) + ("\n" if linhas else ""))
+
+
+# ---------- GUI ----------
+class InventarioGUI:
+    def __init__(self, root: tk.Tk, mapeamento: dict):
+        self.root = root
+        self.mapeamento = mapeamento
+        self.contagem_por_cb = Counter()
+        self.nao_mapeados = Counter()
+
+        self.codigo_atual = tk.StringVar()
+        self.quantidade_atual = tk.IntVar(value=0)
+        self.nome_produto = tk.StringVar()
+
+        self.root.title("Inventário - Contagem de Produtos")
+        self.root.geometry("850x600")
+
+        top = tk.Frame(root, padx=8, pady=8)
+        top.pack(fill=tk.X)
+
+        tk.Label(top, text="CÓDIGO DE BARRAS:").grid(row=0, column=0, sticky="w")
+        self.entrada_cb = tk.Entry(top, textvariable=self.codigo_atual, width=40, font=("TkDefaultFont", 12))
+        self.entrada_cb.grid(row=0, column=1, sticky="w")
+        self.entrada_cb.focus()
+
+        tk.Label(top, text="NOME:").grid(row=1, column=0, sticky="w")
+        tk.Label(top, textvariable=self.nome_produto, fg="blue").grid(row=1, column=1, sticky="w")
+
+        tk.Label(top, text="QTD:").grid(row=2, column=0, sticky="w")
+        tk.Label(top, textvariable=self.quantidade_atual, font=("Arial", 24, "bold"))\
+            .grid(row=2, column=1, sticky="w")
+
+        mid = tk.Frame(root, padx=8, pady=6)
+        mid.pack(fill=tk.BOTH, expand=True)
+
+        columns = ("interno", "barra", "nome", "qtd")
+        self.tree = ttk.Treeview(mid, columns=columns, show="headings")
+        for col, txt, w in [("interno", "Código Interno", 130),
+                            ("barra", "Código de Barras", 170),
+                            ("nome", "Nome", 380),
+                            ("qtd", "Qtd", 80)]:
+            self.tree.heading(col, text=txt)
+            self.tree.column(col, width=w, anchor="w")
+
+        vsb = ttk.Scrollbar(mid, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscroll=vsb.set)
+        self.tree.pack(side="left", fill=tk.BOTH, expand=True)
+        vsb.pack(side="right", fill="y")
+
+        bot = tk.Frame(root, pady=8)
+        bot.pack(fill=tk.X)
+        tk.Button(bot, text="Resumo (Ctrl+F1)", command=self.mostrar_resumo).pack(side="left", padx=6)
+        tk.Button(bot, text="Total (F2)", command=self.mostrar_total).pack(side="left", padx=6)
+        tk.Button(bot, text="Salvar Parcial (F3)", command=self.salvar_parcial).pack(side="left", padx=6)
+        tk.Button(bot, text="Excluir Item (F4)", command=self.remover).pack(side="left", padx=6)
+        tk.Button(bot, text="Finalizar (F5)", command=self.finalizar).pack(side="left", padx=6)
+
+        root.bind("<Return>", self.processar_cb)
+        root.bind("<Control-F1>", lambda e: self.mostrar_resumo())
+        root.bind("<F2>", lambda e: self.mostrar_total())
+        root.bind("<F3>", lambda e: self.salvar_parcial())
+        root.bind("<F4>", lambda e: self.remover())
+        root.bind("<F5>", lambda e: self.finalizar())
+
+    def processar_cb(self, event=None):
+        cb = self.codigo_atual.get().strip()
+        if not cb or len(cb) != 13 or not cb.isdigit():
+            beep_erro()
+            self.codigo_atual.set("")
+            return "break"
+        if cb in self.mapeamento:
+            self.contagem_por_cb[cb] += 1
+            ci, nm = self.mapeamento[cb]
+            self.nome_produto.set(nm)
+            self.quantidade_atual.set(self.contagem_por_cb[cb])
+            beep_ok()
+        else:
+            self.nao_mapeados[cb] += 1
+            self.nome_produto.set("NÃO MAPEADO!")
+            self.quantidade_atual.set(self.nao_mapeados[cb])
+            beep_erro()
+        self.codigo_atual.set("")
+        self.atualizar_lista()
+        return "break"
+
+    def atualizar_lista(self):
+        for r in self.tree.get_children():
+            self.tree.delete(r)
+        for cb, qtd in self.contagem_por_cb.items():
+            if qtd > 0:
+                ci, nm = self.mapeamento.get(cb, ("", "(SEM MAPEAMENTO)"))
+                self.tree.insert("", tk.END, values=(ci, cb, nm, qtd))
+        for cb, qtd in self.nao_mapeados.items():
+            if qtd > 0:
+                self.tree.insert("", tk.END, values=("", cb, "(NÃO MAPEADO)", qtd))
+
+    def mostrar_resumo(self):
+        por_interno = defaultdict(int)
+        for cb, qtd in self.contagem_por_cb.items():
+            if cb in self.mapeamento:
+                ci, _ = self.mapeamento[cb]
+                por_interno[ci] += qtd
+        top = sorted(por_interno.items(), key=lambda x: x[1], reverse=True)[:MOSTRAR_TOP_N_RESUMO]
+        mensagem = "\n".join([f"{ci}: {qtd}" for ci, qtd in top]) if top else "(vazio)"
+        messagebox.showinfo("Resumo", mensagem)
+
+    def mostrar_total(self):
+        total = sum(self.contagem_por_cb.values()) + sum(self.nao_mapeados.values())
+        messagebox.showinfo("Total", f"Total: {total}")
+
+    def salvar_parcial(self):
+        exportar_txt_formatado(self.contagem_por_cb, self.mapeamento, ARQUIVO_BACKUP)
+        messagebox.showinfo("Backup", f"Parcial salvo em {ARQUIVO_BACKUP}")
+
+    def remover(self):
+        cb = self.codigo_atual.get().strip()
+        if cb in self.contagem_por_cb and self.contagem_por_cb[cb] > 0:
+            self.contagem_por_cb[cb] -= 1
+            beep_ok()
+        elif cb in self.nao_mapeados and self.nao_mapeados[cb] > 0:
+            self.nao_mapeados[cb] -= 1
+            beep_erro()
+        else:
+            messagebox.showinfo("Info", "Nada para remover.")
+        self.atualizar_lista()
+
+    def finalizar(self):
+        if not messagebox.askyesno("Finalizar", "Deseja finalizar e exportar?"):
+            return
+        exportar_txt_formatado(self.contagem_por_cb, self.mapeamento, ARQUIVO_TXT_SAIDA)
+        messagebox.showinfo("Finalizado", f"Exportado para {ARQUIVO_TXT_SAIDA}")
+        self.root.quit()
+
+
+# ---------- Main ----------
+def main():
+    caminho_excel, aba = ARQUIVO_EXCEL_PADRAO, ABA_EXCEL_PADRAO
+    args = sys.argv[1:]
+    if len(args) >= 1:
+        caminho_excel = args[0]
+    if len(args) >= 2:
+        aba = args[1]
+    mapeamento = carregar_mapeamento(caminho_excel, aba)
+    root = tk.Tk()
+    app = InventarioGUI(root, mapeamento)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
