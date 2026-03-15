@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IKARUS Mobile</title>
+  <style>
+    :root {
+      --bg: #f5f6f8;
+      --card: #ffffff;
+      --ink: #1d2329;
+      --muted: #59636e;
+      --accent: #0f766e;
+      --accent-2: #0b4f4a;
+      --line: #d9dde3;
+      --danger: #b91c1c;
+      --ok: #166534;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: radial-gradient(circle at 10% -10%, #dff6f3, transparent 30%), var(--bg);
+      color: var(--ink);
+    }
+    .wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 12px;
+    }
+    .hero {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      border-radius: 14px;
+      color: #fff;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .hero h1 { margin: 0; font-size: 20px; }
+    .hero p { margin: 6px 0 0; font-size: 13px; opacity: 0.9; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    @media (min-width: 820px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 16px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      margin: 6px 0 4px;
+      color: var(--muted);
+    }
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 15px;
+      background: #fff;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 10px;
+      color: #fff;
+      background: var(--accent);
+      font-weight: 600;
+      width: 100%;
+      margin-top: 8px;
+    }
+    button.alt { background: #334155; }
+    button.warn { background: #a16207; }
+    button.danger { background: var(--danger); }
+    .status {
+      font-size: 13px;
+      margin-top: 8px;
+      min-height: 20px;
+      color: var(--muted);
+    }
+    .status.ok { color: var(--ok); }
+    .status.err { color: var(--danger); }
+    #camera {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #000;
+      min-height: 140px;
+      max-height: 220px;
+      object-fit: cover;
+    }
+    .camera-wrap {
+      position: relative;
+      width: 100%;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #000;
+      border: 1px solid var(--line);
+    }
+    .scanner-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .scan-box {
+      position: relative;
+      width: 68%;
+      aspect-ratio: 3.2 / 1;
+      border: 2px solid rgba(255,255,255,0.95);
+      border-radius: 12px;
+      box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
+      background: rgba(15, 118, 110, 0.06);
+    }
+    .camera-hint {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      padding: 6px;
+      vertical-align: top;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <h1>IKARUS Mobile</h1>
+      <p>Consulta de preco, ajuste, cadastro e inventario com leitura por camera.</p>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Leitura de Codigo</h2>
+        <div class="camera-wrap">
+          <video id="camera" playsinline muted></video>
+          <div class="scanner-overlay">
+            <div class="scan-box"></div>
+          </div>
+        </div>
+        <div class="camera-hint">Posicione o codigo de barras dentro do retangulo para leitura mais precisa.</div>
+        <button id="btnScan">Iniciar Camera</button>
+        <button id="btnStop" class="alt">Parar Camera</button>
+
+        <label>Codigo de barras</label>
+        <input id="codigo" placeholder="Digite ou escaneie" />
+
+        <div class="row">
+          <button id="btnConsulta">Consultar Preco</button>
+          <button id="btnContar" class="warn">Contar +1</button>
+        </div>
+
+        <label>Delta de ajuste (pode ser negativo)</label>
+        <input id="delta" value="-1" />
+        <button id="btnAjuste" class="danger">Aplicar Ajuste</button>
+
+        <div id="status" class="status"></div>
+      </div>
+
+      <div class="card">
+        <h2>Cadastro Rapido</h2>
+        <label>Codigo de barras</label>
+        <input id="cadCb" />
+        <label>Codigo interno</label>
+        <input id="cadCi" />
+        <label>Nome</label>
+        <input id="cadNome" />
+        <label>Grupo</label>
+        <input id="cadGrupo" />
+        <label>Preco</label>
+        <input id="cadPreco" placeholder="Ex: 12.90" />
+        <button id="btnCadastrar">Cadastrar / Atualizar</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <h2>Inventario da Sessao</h2>
+      <button id="btnAtualizar" class="alt">Atualizar Lista</button>
+      <div style="overflow:auto; margin-top:8px;">
+        <table>
+          <thead>
+            <tr>
+              <th>CB</th>
+              <th>Nome</th>
+              <th>Qtd</th>
+              <th>Preco</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+  <script>
+    const statusEl = document.getElementById('status');
+    const codigoEl = document.getElementById('codigo');
+    const videoEl = document.getElementById('camera');
+    let stream = null;
+    let detector = null;
+    let timer = null;
+    let zxingReader = null;
+    const roiCanvas = document.createElement('canvas');
+    const roiCtx = roiCanvas.getContext('2d', { willReadFrequently: true });
+    let lastRead = '';
+    let hitCount = 0;
+    const MIN_HITS = 2;
+
+    function setStatus(msg, ok = null) {
+      statusEl.textContent = msg || '';
+      statusEl.className = 'status' + (ok === true ? ' ok' : ok === false ? ' err' : '');
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.erro || 'Erro na requisicao');
+      return data;
+    }
+
+    function origemInsegura() {
+      const localhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      return !window.isSecureContext && !localhost;
+    }
+
+    function getRoi(video) {
+      const vw = video.videoWidth || 0;
+      const vh = video.videoHeight || 0;
+      if (!vw || !vh) return null;
+
+      let rw = Math.floor(vw * 0.76);
+      let rh = Math.floor(rw / 3.2);
+      const maxRh = Math.floor(vh * 0.35);
+      if (rh > maxRh) {
+        rh = maxRh;
+        rw = Math.floor(rh * 3.2);
+      }
+
+      const rx = Math.floor((vw - rw) / 2);
+      const ry = Math.floor((vh - rh) / 2);
+      return { x: rx, y: ry, w: rw, h: rh };
+    }
+
+    function registrarLeitura(raw) {
+      const valor = String(raw || '').trim();
+      if (!valor) return;
+
+      if (valor === lastRead) {
+        hitCount += 1;
+      } else {
+        lastRead = valor;
+        hitCount = 1;
+      }
+
+      if (hitCount >= MIN_HITS) {
+        codigoEl.value = valor;
+        setStatus('Codigo capturado: ' + valor, true);
+        hitCount = 0;
+        lastRead = '';
+        try { navigator.vibrate && navigator.vibrate(60); } catch (_) {}
+      }
+    }
+
+    async function iniciarComBarcodeDetector() {
+      detector = new BarcodeDetector({ formats: ['ean_13', 'code_128', 'upc_a', 'upc_e'] });
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 }
+        }
+      });
+      videoEl.srcObject = stream;
+      await videoEl.play();
+
+      timer = setInterval(async () => {
+        if (!detector || videoEl.readyState < 2) return;
+        try {
+          const roi = getRoi(videoEl);
+          if (!roi) return;
+
+          roiCanvas.width = roi.w;
+          roiCanvas.height = roi.h;
+          roiCtx.drawImage(videoEl, roi.x, roi.y, roi.w, roi.h, 0, 0, roi.w, roi.h);
+
+          const codes = await detector.detect(roiCanvas);
+          if (codes && codes.length > 0) {
+            registrarLeitura(codes[0].rawValue || '');
+          }
+        } catch (_) {}
+      }, 180);
+    }
+
+    async function iniciarComZXing() {
+      if (!window.ZXing || !window.ZXing.BrowserMultiFormatReader) {
+        throw new Error('Leitor ZXing indisponivel no navegador.');
+      }
+      zxingReader = new window.ZXing.BrowserMultiFormatReader();
+      await zxingReader.decodeFromVideoDevice(null, 'camera', (result, err) => {
+        if (result && result.getText) {
+          registrarLeitura(result.getText());
+        }
+      });
+    }
+
+    async function iniciarCamera() {
+      pararCamera();
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setStatus('Seu navegador nao suporta acesso a camera.', false);
+        return;
+      }
+
+      if (origemInsegura()) {
+        setStatus('Camera bloqueada por seguranca: abra via HTTPS (ou localhost).', false);
+        return;
+      }
+
+      try {
+        if ('BarcodeDetector' in window) {
+          await iniciarComBarcodeDetector();
+        } else {
+          await iniciarComZXing();
+        }
+        setStatus('Camera iniciada. Aponte para o codigo.', true);
+      } catch (err) {
+        const msg = (err && err.message) ? err.message : String(err);
+        setStatus('Falha ao iniciar camera: ' + msg, false);
+      }
+    }
+
+    function pararCamera() {
+      if (timer) clearInterval(timer);
+      timer = null;
+      detector = null;
+
+      if (zxingReader) {
+        try { zxingReader.reset(); } catch (_) {}
+      }
+      zxingReader = null;
+
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+      }
+      stream = null;
+      videoEl.srcObject = null;
+      setStatus('Camera parada.');
+    }
+
+    async function consultar() {
+      const cb = codigoEl.value.trim();
+      if (!cb) return setStatus('Informe o codigo de barras.', false);
+      try {
+        const data = await api('/api/produto/' + encodeURIComponent(cb));
+        if (!data.encontrado) {
+          setStatus('Produto nao mapeado. Qtd atual: ' + (data.quantidade || 0), false);
+          return;
+        }
+        setStatus('Produto: ' + data.nome + ' | Preco: ' + (data.preco ?? 'N/A') + ' | Qtd: ' + data.quantidade, true);
+      } catch (err) {
+        setStatus(err.message, false);
+      }
+    }
+
+    async function contar() {
+      const cb = codigoEl.value.trim();
+      if (!cb) return setStatus('Informe o codigo de barras.', false);
+      try {
+        const data = await api('/api/contar', {
+          method: 'POST',
+          body: JSON.stringify({ codigo_barras: cb, quantidade: 1 })
+        });
+        setStatus('Contado com sucesso. Nova qtd: ' + data.quantidade, true);
+        await atualizarInventario();
+      } catch (err) {
+        setStatus(err.message, false);
+      }
+    }
+
+    async function ajuste() {
+      const cb = codigoEl.value.trim();
+      const delta = parseInt(document.getElementById('delta').value, 10);
+      if (!cb) return setStatus('Informe o codigo de barras.', false);
+      if (Number.isNaN(delta)) return setStatus('Delta invalido.', false);
+      try {
+        const data = await api('/api/ajuste', {
+          method: 'POST',
+          body: JSON.stringify({ codigo_barras: cb, delta })
+        });
+        setStatus('Ajuste aplicado. Nova qtd: ' + data.quantidade, true);
+        await atualizarInventario();
+      } catch (err) {
+        setStatus(err.message, false);
+      }
+    }
+
+    async function cadastrar() {
+      const payload = {
+        codigo_barras: document.getElementById('cadCb').value.trim(),
+        codigo_interno: document.getElementById('cadCi').value.trim(),
+        nome: document.getElementById('cadNome').value.trim(),
+        grupo: document.getElementById('cadGrupo').value.trim(),
+        preco: document.getElementById('cadPreco').value.trim(),
+      };
+      try {
+        await api('/api/cadastrar', { method: 'POST', body: JSON.stringify(payload) });
+        setStatus('Cadastro salvo com sucesso.', true);
+      } catch (err) {
+        setStatus(err.message, false);
+      }
+    }
+
+    async function atualizarInventario() {
+      const tbody = document.getElementById('tbody');
+      tbody.innerHTML = '';
+      try {
+        const data = await api('/api/inventario');
+        for (const item of data.itens) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${item.codigo_barras}</td>
+            <td>${item.nome || ''}</td>
+            <td>${item.quantidade}</td>
+            <td>${item.preco ?? ''}</td>
+          `;
+          tbody.appendChild(tr);
+        }
+      } catch (err) {
+        setStatus(err.message, false);
+      }
+    }
+
+    document.getElementById('btnScan').addEventListener('click', iniciarCamera);
+    document.getElementById('btnStop').addEventListener('click', pararCamera);
+    document.getElementById('btnConsulta').addEventListener('click', consultar);
+    document.getElementById('btnContar').addEventListener('click', contar);
+    document.getElementById('btnAjuste').addEventListener('click', ajuste);
+    document.getElementById('btnCadastrar').addEventListener('click', cadastrar);
+    document.getElementById('btnAtualizar').addEventListener('click', atualizarInventario);
+
+    if (origemInsegura()) {
+      setStatus('Dica: para camera no celular, use HTTPS no servidor mobile.', false);
+    }
+
+    atualizarInventario();
+  </script>
+</body>
+</html>

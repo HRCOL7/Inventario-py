@@ -1,0 +1,24 @@
+# Python cache and environments
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+.venv-1/
+.venv-2/
+venv/
+
+# Editor
+.vscode/
+
+# Runtime logs and local database
+*.log
+app_inventario.db
+
+# Inventory generated outputs
+contagem.txt
+contagem.xlsx
+contagem_backup.txt
+contagem_detalhada.csv
+nao_mapeados.csv
+relatorio_inventario.pdf
+sessoes_contagem/
